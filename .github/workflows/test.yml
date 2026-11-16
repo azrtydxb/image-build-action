@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
@@ -43,6 +44,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           secrets: |
             tok=s3cr3t
+          sbom: "true"
+          provenance: mode=max
       - name: Outputs and the pushed manifest list
         env:
           DIGEST: ${{ steps.img.outputs.digest }}
@@ -59,6 +62,23 @@ jobs:
           echo "$raw"
           echo "$raw" | grep -q '"architecture": *"amd64"'
           echo "$raw" | grep -q '"architecture": *"arm64"'
+      - name: Attestations are in the registry
+        env:
+          DIGEST: ${{ steps.img.outputs.digest }}
+        run: |
+          set -eu
+          cosign="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ibb-attest/cosign-3.1.4-amd64"
+          ref=ghcr.io/azrtydxb/image-build-action-test
+          id='https://github.com/azrtydxb/image-build-action/.*'
+          iss=https://token.actions.githubusercontent.com
+          "$cosign" verify-attestation --type slsaprovenance1 --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$DIGEST" >/dev/null
+          crane="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ibb-attest/crane-0.22.1-amd64"
+          "$crane" manifest "$ref@$DIGEST" | python3 -c 'import json,sys; print("\n".join(m["platform"]["os"]+"/"+m["platform"]["architecture"]+" "+m["digest"] for m in json.load(sys.stdin)["manifests"] if m["platform"]["os"]!="unknown"))' >"$RUNNER_TEMP/plats"
+          [ "$(wc -l <"$RUNNER_TEMP/plats")" = 2 ]
+          while read -r plat d; do
+            "$cosign" verify-attestation --type spdxjson --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$d" >/dev/null
+            echo "sbom ok for $plat"
+          done <"$RUNNER_TEMP/plats"
       - name: Second run reads the layer cache
         id: again
         uses: ./
@@ -90,6 +110,8 @@ jobs:
           push: "true"
           load: "true"
           tags: ghcr.io/azrtydxb/image-build-action-test:single-${{ github.run_id }}
+          sbom: "true"
+          provenance: "true"
           secret-files: |
             tok=${{ runner.temp }}/tok.txt
       - run: |

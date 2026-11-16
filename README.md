@@ -58,9 +58,11 @@ a limit, and never while a build runs (builds hold a shared `flock`).
 | `no-cache` | `false` | `--no-cache` |
 | `pull` | `false` | `--pull=always` |
 | `auth-file` | `$DOCKER_CONFIG/config.json` or `~/.docker/config.json` | Credentials; where `docker/login-action` and `ant-setup-action` write theirs |
+| `sbom` | `false` | With `push`: SPDX SBOM (syft 1.54.1) attached as a keyless cosign attestation to the pushed image, or to each platform manifest of a list |
+| `provenance` | `false` | With `push`: SLSA v1 provenance attached as a keyless cosign attestation to the pushed digest (the index for several platforms) |
 | `podman-version` | `6.1.3` | Only versions in the checksum table of `build.sh` |
 
-Outputs: `digest` (of the pushed image or manifest list; empty without push), `imageid`, `metadata`
+Outputs: `platform-digests` (one `os/arch digest` line per platform manifest of a pushed list), `digest` (of the pushed image or manifest list; empty without push), `imageid`, `metadata`
 (JSON with `containerimage.digest`, `containerimage.config.digest`, `image.name`).
 
 ## Migrating from docker/build-push-action
@@ -71,7 +73,9 @@ Remove these, they have no use with this action:
 - `cache-from` / `cache-to` (type=registry from `ant-setup-action`'s `build-cache` outputs, or type=gha):
   the shared store is the cache. Also drop `build-cache: "true"` from `ant-setup-action` if the job
   builds nothing else with buildx;
-- `provenance`, `sbom`, `outputs`, `builder`, `github-token`, `no-cache-filters` (not supported; BuildKit-only).
+- `builder`, `github-token`, `no-cache-filters`, `outputs` (not supported; BuildKit-only).
+  `sbom: true` and `provenance: mode=max` keep working: they map to the inputs below (any value but
+  `false` turns them on).
 
 Keep `docker/login-action` (or `ant-setup-action` with `docker-login: true`): the action reads
 `~/.docker/config.json`. Everything else maps by name.
@@ -110,6 +114,30 @@ After:
 ```
 
 `steps.<id>.outputs.digest` is the same as docker/build-push-action's.
+
+## Attestations (sbom, provenance)
+
+`sbom: true` and `provenance: true` replace BuildKit's attestations. After the push the action installs
+pinned, checksum-verified `syft` and `cosign` and attaches, keyless (GitHub OIDC identity, Sigstore
+Fulcio/Rekor), in the registry next to each repository of `tags`:
+
+- an SPDX JSON SBOM (`--type spdxjson`) on the image, or on **each platform manifest** of a manifest list;
+- a SLSA v1 provenance (`--type slsaprovenance1`: workflow, ref, commit, run) on the pushed digest, i.e.
+  the **index** for several platforms.
+
+The job needs `permissions: id-token: write` (the action fails with a clear message without it); pushing
+to ghcr.io also needs `packages: write`. Verify with:
+
+```sh
+cosign verify-attestation --type slsaprovenance1 \
+  --certificate-identity-regexp 'https://github.com/azrtydxb/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com ghcr.io/azrtydxb/app@sha256:...
+```
+
+Attestations are stored as registry artifacts (cosign's `sha256-<digest>.att` tags), which any registry
+that stores tags and manifests accepts (ghcr.io, OCIR and Ant's oci-hosted feed need no referrers API).
+GitHub's own attestation store (`actions/attest-build-provenance`) is not used: it is not available for
+private repositories on the org's plan. They need no `attestations: write` permission.
 
 ## Requirements and gotchas
 
