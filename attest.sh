@@ -82,7 +82,7 @@ done < <(printf '%s\n' "$IBB_TAGS" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d')
 platforms=()
 if [ "${IBB_MULTI:-false}" = true ]; then
 	if is_on "${IBB_SBOM:-}"; then
-		while IFS= read -r l; do [ -n "$l" ] && platforms+=("$l"); done < <("$crane" manifest "${repos[0]}@$IBB_DIGEST" | python3 -c '
+		while IFS= read -r l; do [ -n "$l" ] && platforms+=("$l"); done < <("$crane" manifest $(case " $(printf '%s' "${IBB_INSECURE:-}" | tr ',\n\r' '   ') " in *" ${repos[0]%%/*} "*) echo --insecure ;; esac) "${repos[0]}@$IBB_DIGEST" | python3 -c '
 import json, sys
 for m in json.load(sys.stdin).get("manifests", []):
     p = m.get("platform", {})
@@ -117,8 +117,15 @@ print(json.dumps({
 PY
 }
 
+insecure=" $(printf '%s' "${IBB_INSECURE:-}" | tr ',\n\r' '   ') "
 export COSIGN_YES=true
 for repo in "${repos[@]}"; do
+	# plain-HTTP registries from insecure-registries: matching flags for cosign, syft and crane
+	cosign_flags=(); crane_flags=(); syft_env=()
+	case "$insecure" in *" ${repo%%/*} "*)
+		cosign_flags=(--allow-insecure-registry); crane_flags=(--insecure)
+		syft_env=(SYFT_REGISTRY_INSECURE_USE_HTTP=true SYFT_REGISTRY_INSECURE_SKIP_TLS_VERIFY=true) ;;
+	esac
 	if is_on "${IBB_SBOM:-}"; then
 		for p in "${platforms[@]}"; do
 			plat=${p%% *}; dig=${p##* }
@@ -126,15 +133,15 @@ for repo in "${repos[@]}"; do
 			sargs=(scan "registry:$repo@$dig" -o "spdx-json=$work/sbom.json")
 			# syft refuses a manifest of another arch than the host unless told which one it is
 			case "$plat" in */*) sargs+=(--platform "$plat") ;; esac
-			"$syft" "${sargs[@]}"
-			"$cosign" attest --yes --type spdxjson --predicate "$work/sbom.json" "$repo@$dig"
+			env "${syft_env[@]:-IBB_NOOP=1}" "$syft" "${sargs[@]}"
+			"$cosign" attest --yes "${cosign_flags[@]}" --type spdxjson --predicate "$work/sbom.json" "$repo@$dig"
 			echo "::endgroup::"
 		done
 	fi
 	if is_on "${IBB_PROVENANCE:-}"; then
 		echo "::group::provenance $repo@$IBB_DIGEST"
 		predicate_provenance "$IBB_DIGEST" >"$work/provenance.json"
-		"$cosign" attest --yes --type slsaprovenance1 --predicate "$work/provenance.json" "$repo@$IBB_DIGEST"
+		"$cosign" attest --yes "${cosign_flags[@]}" --type slsaprovenance1 --predicate "$work/provenance.json" "$repo@$IBB_DIGEST"
 		echo "::endgroup::"
 	fi
 done

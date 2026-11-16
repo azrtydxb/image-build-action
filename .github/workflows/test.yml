@@ -118,6 +118,33 @@ jobs:
       - run: |
           cosign=$(ls "${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}"/ibb-attest/cosign-3.1.4-amd64)
           "$cosign" verify-attestation --type slsaprovenance1 --certificate-identity-regexp 'https://github.com/azrtydxb/image-build-action/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com "ghcr.io/azrtydxb/image-build-action-test@${{ steps.idx.outputs.digest }}" >/dev/null
+  insecure:
+    runs-on: arc-azrtydxb-amd64
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: A plain-HTTP registry in the job's dind, reached from the Podman sidecar
+        run: docker run -d --restart=always -p 127.0.0.1:5001:5000 --name reg docker.io/library/registry:2.8.3
+      - id: img
+        uses: ./
+        with:
+          context: test/ctx
+          platforms: linux/amd64,linux/arm64
+          push: "true"
+          tags: localhost:5001/ibb-test:ci
+          insecure-registries: localhost:5001
+          secrets: |
+            tok=s3cr3t
+          sbom: "true"
+          provenance: "true"
+      - name: Pushed and attested
+        env:
+          DIGEST: ${{ steps.img.outputs.digest }}
+        run: |
+          set -eu
+          cosign="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ibb-attest/cosign-3.1.4-amd64"
+          curl -fsS -H 'Accept: application/vnd.oci.image.index.v1+json' "http://localhost:5001/v2/ibb-test/manifests/$DIGEST" | grep -q '"arm64"'
+          "$cosign" verify-attestation --allow-insecure-registry --type slsaprovenance1 --certificate-identity-regexp 'https://github.com/azrtydxb/image-build-action/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com "localhost:5001/ibb-test@$DIGEST" >/dev/null
   single:
     runs-on: arc-azrtydxb-amd64
     timeout-minutes: 20

@@ -67,6 +67,9 @@ tags=()
 while IFS= read -r t; do
 	for x in ${t//,/ }; do tags+=("$x"); done
 done < <(lines "$IBB_TAGS")
+insecure=" $(printf '%s' "${IBB_INSECURE:-}" | tr ',\n\r' '   ') "
+# tls_flag <tag>: --tls-verify=false only for tags of an insecure-registries registry
+tls_flag() { case "$insecure" in *" ${1%%/*} "*) echo --tls-verify=false ;; esac; }
 is_true "$IBB_PUSH" && [ ${#tags[@]} -eq 0 ] && die "push needs at least one tag"
 is_true "$IBB_LOAD" && is_true "$multi" && die "load works for a single platform only"
 
@@ -138,9 +141,9 @@ if is_true "$IBB_PUSH"; then
 	for t in "${tags[@]}"; do
 		echo "::group::push $t"
 		if is_true "$multi"; then
-			"$podman" manifest push --all --digestfile "$digestfile" "$local_name" "docker://$t"
+			"$podman" manifest push --all $(tls_flag "$t") --digestfile "$digestfile" "$local_name" "docker://$t"
 		else
-			"$podman" push --digestfile "$digestfile" "$local_name" "docker://$t"
+			"$podman" push $(tls_flag "$t") --digestfile "$digestfile" "$local_name" "docker://$t"
 		fi
 		echo "::endgroup::"
 		digest=$(cat "$digestfile")
