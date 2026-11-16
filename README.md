@@ -60,6 +60,7 @@ a limit, and never while a build runs (builds hold a shared `flock`).
 | `auth-file` | `$DOCKER_CONFIG/config.json` or `~/.docker/config.json` | Credentials; where `docker/login-action` and `ant-setup-action` write theirs |
 | `sbom` | `false` | With `push`: SPDX SBOM (syft 1.54.1) attached as a keyless cosign attestation to the pushed image, or to each platform manifest of a list |
 | `provenance` | `false` | With `push`: SLSA v1 provenance attached as a keyless cosign attestation to the pushed digest (the index for several platforms) |
+| `insecure-registries` | | Plain-HTTP or untrusted-TLS registries (`localhost:5001`): pushes to those use `--tls-verify=false`, cosign/syft/crane get their insecure flags |
 | `podman-version` | `6.1.3` | Only versions in the checksum table of `build.sh` |
 
 Outputs: `platform-digests` (one `os/arch digest` line per platform manifest of a pushed list), `digest` (of the pushed image or manifest list; empty without push), `imageid`, `metadata`

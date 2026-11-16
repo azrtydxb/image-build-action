@@ -78,6 +78,13 @@ inputs:
   digest:
     description: With attest-only, the digest (sha256:...) to attest in each repository of `tags`.
     default: ""
+  insecure-registries:
+    description: >
+      Registries that speak plain HTTP or have an untrusted certificate (host or host:port, one per
+      line or comma-separated), for example a job-local registry at localhost:5001. Pushes to tags of
+      these registries use --tls-verify=false, and the attestation step uses the matching insecure
+      flags of cosign, syft and crane. Nothing else is relaxed.
+    default: ""
   podman-version:
     description: podman-remote release to use. Only the version in the action's checksum table is accepted.
     default: "6.1.3"
@@ -113,6 +120,7 @@ runs:
         IBB_PULL: ${{ inputs.pull }}
         IBB_AUTH_FILE: ${{ inputs.auth-file }}
         IBB_PODMAN_VERSION: ${{ inputs.podman-version }}
+        IBB_INSECURE: ${{ inputs.insecure-registries }}
       run: bash "$GITHUB_ACTION_PATH/build.sh"
     - id: attest
       if: ${{ (steps.build.outputs.digest != '' || inputs.digest != '') && (inputs.sbom != 'false' && inputs.sbom != '' || inputs.provenance != 'false' && inputs.provenance != '') }}
@@ -125,5 +133,6 @@ runs:
         IBB_SBOM: ${{ inputs.sbom }}
         IBB_PROVENANCE: ${{ inputs.provenance }}
         IBB_AUTH_FILE: ${{ inputs.auth-file }}
+        IBB_INSECURE: ${{ inputs.insecure-registries }}
         IBB_PODMAN_VERSION: ${{ inputs.podman-version }}
       run: bash "$GITHUB_ACTION_PATH/attest.sh"
