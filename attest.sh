@@ -102,8 +102,9 @@ for repo in "${repos[@]}"; do
 		for p in "${platforms[@]}"; do
 			plat=${p%% *}; dig=${p##* }
 			echo "::group::sbom $repo@$dig ($plat)"
-			# every digest here is a single-image manifest, so no --platform
-			sargs=(scan "registry:$repo@$dig" -o "spdx-json=$work/sbom.json" -q)
+			sargs=(scan "registry:$repo@$dig" -o "spdx-json=$work/sbom.json")
+			# syft refuses a manifest of another arch than the host unless told which one it is
+			case "$plat" in */*) sargs+=(--platform "$plat") ;; esac
 			"$syft" "${sargs[@]}"
 			"$cosign" attest --yes --type spdxjson --predicate "$work/sbom.json" "$repo@$dig"
 			echo "::endgroup::"
