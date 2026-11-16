@@ -73,10 +73,7 @@ jobs:
           iss=https://token.actions.githubusercontent.com
           "$cosign" verify-attestation --type slsaprovenance1 --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$DIGEST" >/dev/null
           crane="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ibb-attest/crane-0.22.1-amd64"
-          "$crane" manifest "$ref@$DIGEST" | python3 -c 'import json,sys
-for m in json.load(sys.stdin)["manifests"]:
-    p = m["platform"]
-    if p["os"] != "unknown": print(p["os"] + "/" + p["architecture"], m["digest"])' >"$RUNNER_TEMP/plats"
+          "$crane" manifest "$ref@$DIGEST" | python3 -c 'import json,sys; print("\n".join(m["platform"]["os"]+"/"+m["platform"]["architecture"]+" "+m["digest"] for m in json.load(sys.stdin)["manifests"] if m["platform"]["os"]!="unknown"))' >"$RUNNER_TEMP/plats"
           [ "$(wc -l <"$RUNNER_TEMP/plats")" = 2 ]
           while read -r plat d; do
             "$cosign" verify-attestation --type spdxjson --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$d" >/dev/null
