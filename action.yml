@@ -69,6 +69,15 @@ inputs:
       (the index for several platforms). Any value but false/empty (for example mode=max) turns it on.
       Needs `permissions: id-token: write`.
     default: "false"
+  attest-only:
+    description: >
+      Build and push nothing: only attach the `sbom`/`provenance` attestations to the image or index at
+      `digest` in the repositories of `tags` (for an index created later, for example with
+      docker buildx imagetools create). Needs `digest`, `provenance` and/or `sbom`, and `permissions: id-token: write`.
+    default: "false"
+  digest:
+    description: With attest-only, the digest (sha256:...) to attest in each repository of `tags`.
+    default: ""
   podman-version:
     description: podman-remote release to use. Only the version in the action's checksum table is accepted.
     default: "6.1.3"
@@ -86,6 +95,7 @@ runs:
   using: composite
   steps:
     - id: build
+      if: ${{ inputs.attest-only != 'true' }}
       shell: bash
       env:
         IBB_CONTEXT: ${{ inputs.context }}
@@ -105,11 +115,11 @@ runs:
         IBB_PODMAN_VERSION: ${{ inputs.podman-version }}
       run: bash "$GITHUB_ACTION_PATH/build.sh"
     - id: attest
-      if: ${{ steps.build.outputs.digest != '' && (inputs.sbom != 'false' && inputs.sbom != '' || inputs.provenance != 'false' && inputs.provenance != '') }}
+      if: ${{ (steps.build.outputs.digest != '' || inputs.digest != '') && (inputs.sbom != 'false' && inputs.sbom != '' || inputs.provenance != 'false' && inputs.provenance != '') }}
       shell: bash
       env:
         IBB_TAGS: ${{ inputs.tags }}
-        IBB_DIGEST: ${{ steps.build.outputs.digest }}
+        IBB_DIGEST: ${{ inputs.digest != '' && inputs.digest || steps.build.outputs.digest }}
         IBB_PLATFORMS: ${{ inputs.platforms }}
         IBB_MULTI: ${{ contains(inputs.platforms, ',') }}
         IBB_SBOM: ${{ inputs.sbom }}

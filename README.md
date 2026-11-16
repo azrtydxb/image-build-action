@@ -139,6 +139,20 @@ that stores tags and manifests accepts (ghcr.io, OCIR and Ant's oci-hosted feed 
 GitHub's own attestation store (`actions/attest-build-provenance`) is not used: it is not available for
 private repositories on the org's plan. They need no `attestations: write` permission.
 
+### Attesting an image you did not push here (`attest-only`)
+
+`attest-only: true` skips the build and attaches the attestations to `digest` in each repository of
+`tags`, for example the index a later job created with `docker buildx imagetools create`:
+
+```yaml
+- uses: azrtydxb/image-build-action@v1
+  with:
+    attest-only: true
+    tags: ghcr.io/azrtydxb/app:${{ github.sha }}
+    digest: ${{ steps.index.outputs.digest }}
+    provenance: true
+```
+
 ## Requirements and gotchas
 
 - **Runner**: `runs-on: arc-azrtydxb-amd64` (or its labels), a step directly in the runner container.
