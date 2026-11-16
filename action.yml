@@ -91,7 +91,6 @@ runs:
         IBB_CONTEXT: ${{ inputs.context }}
         IBB_FILE: ${{ inputs.file }}
         IBB_PLATFORMS: ${{ inputs.platforms }}
-        IBB_MULTI: ${{ contains(inputs.platforms, ',') }}
         IBB_TAGS: ${{ inputs.tags }}
         IBB_PUSH: ${{ inputs.push }}
         IBB_LOAD: ${{ inputs.load }}
@@ -112,6 +111,7 @@ runs:
         IBB_TAGS: ${{ inputs.tags }}
         IBB_DIGEST: ${{ steps.build.outputs.digest }}
         IBB_PLATFORMS: ${{ inputs.platforms }}
+        IBB_MULTI: ${{ contains(inputs.platforms, ',') }}
         IBB_SBOM: ${{ inputs.sbom }}
         IBB_PROVENANCE: ${{ inputs.provenance }}
         IBB_AUTH_FILE: ${{ inputs.auth-file }}
