@@ -150,7 +150,9 @@ fi
 # digest of every platform manifest of the pushed list (for attestations), "os/arch[/variant] digest"
 platform_digests=
 if is_true "$IBB_PUSH" && is_true "$multi"; then
-	platform_digests=$("$podman" manifest inspect "$local_name" | python3 -c '
+	# from the pushed list: the platform manifests in the registry can differ from the local ones
+	first=${tags[0]}; last=${first##*/}; case "$last" in *:*) first=${first%:*} ;; esac
+	platform_digests=$("$podman" manifest inspect "docker://${first%@*}@$digest" | python3 -c '
 import json, sys
 for m in json.load(sys.stdin).get("manifests", []):
     p = m.get("platform", {})
