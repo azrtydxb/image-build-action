@@ -57,6 +57,18 @@ inputs:
       Docker config.json with the registry credentials. Default is $DOCKER_CONFIG/config.json or
       ~/.docker/config.json, where docker/login-action and ant-setup-action write theirs.
     default: ""
+  sbom:
+    description: >
+      With push: attach an SPDX SBOM (syft) as a keyless cosign attestation to the pushed image, or to
+      each platform manifest of a manifest list. Any value but false/empty turns it on. Needs
+      `permissions: id-token: write`.
+    default: "false"
+  provenance:
+    description: >
+      With push: attach a SLSA v1 build provenance as a keyless cosign attestation to the pushed digest
+      (the index for several platforms). Any value but false/empty (for example mode=max) turns it on.
+      Needs `permissions: id-token: write`.
+    default: "false"
   podman-version:
     description: podman-remote release to use. Only the version in the action's checksum table is accepted.
     default: "6.1.3"
@@ -67,6 +79,9 @@ outputs:
   imageid:
     description: ID of the built image or manifest list in the Podman store.
     value: ${{ steps.build.outputs.imageid }}
+  platform-digests:
+    description: One "os/arch digest" line per platform manifest of the pushed list (empty for one platform).
+    value: ${{ steps.build.outputs.platform-digests }}
   metadata:
     description: Build result as JSON (containerimage.digest, image.name, containerimage.config.digest).
     value: ${{ steps.build.outputs.metadata }}
@@ -92,3 +107,16 @@ runs:
         IBB_AUTH_FILE: ${{ inputs.auth-file }}
         IBB_PODMAN_VERSION: ${{ inputs.podman-version }}
       run: bash "$GITHUB_ACTION_PATH/build.sh"
+    - id: attest
+      if: ${{ steps.build.outputs.digest != '' && (inputs.sbom != 'false' && inputs.sbom != '' || inputs.provenance != 'false' && inputs.provenance != '') }}
+      shell: bash
+      env:
+        IBB_TAGS: ${{ inputs.tags }}
+        IBB_DIGEST: ${{ steps.build.outputs.digest }}
+        IBB_PLATFORM_DIGESTS: ${{ steps.build.outputs.platform-digests }}
+        IBB_PLATFORMS: ${{ inputs.platforms }}
+        IBB_SBOM: ${{ inputs.sbom }}
+        IBB_PROVENANCE: ${{ inputs.provenance }}
+        IBB_AUTH_FILE: ${{ inputs.auth-file }}
+        IBB_PODMAN_VERSION: ${{ inputs.podman-version }}
+      run: bash "$GITHUB_ACTION_PATH/attest.sh"

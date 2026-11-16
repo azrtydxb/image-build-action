@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
@@ -43,6 +44,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           secrets: |
             tok=s3cr3t
+          sbom: "true"
+          provenance: mode=max
       - name: Outputs and the pushed manifest list
         env:
           DIGEST: ${{ steps.img.outputs.digest }}
@@ -59,6 +62,22 @@ jobs:
           echo "$raw"
           echo "$raw" | grep -q '"architecture": *"amd64"'
           echo "$raw" | grep -q '"architecture": *"arm64"'
+      - name: Attestations are in the registry
+        env:
+          DIGEST: ${{ steps.img.outputs.digest }}
+          PLATFORM_DIGESTS: ${{ steps.img.outputs.platform-digests }}
+        run: |
+          set -eu
+          cosign="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/ibb-attest/cosign-3.1.4-amd64"
+          ref=ghcr.io/azrtydxb/image-build-action-test
+          id='https://github.com/azrtydxb/image-build-action/.*'
+          iss=https://token.actions.githubusercontent.com
+          "$cosign" verify-attestation --type slsaprovenance1 --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$DIGEST" >/dev/null
+          [ "$(printf '%s\n' "$PLATFORM_DIGESTS" | grep -c sha256:)" = 2 ]
+          printf '%s\n' "$PLATFORM_DIGESTS" | while read -r plat d; do
+            "$cosign" verify-attestation --type spdxjson --certificate-identity-regexp "$id" --certificate-oidc-issuer "$iss" "$ref@$d" >/dev/null
+            echo "sbom ok for $plat"
+          done
       - name: Second run reads the layer cache
         id: again
         uses: ./
@@ -90,6 +109,8 @@ jobs:
           push: "true"
           load: "true"
           tags: ghcr.io/azrtydxb/image-build-action-test:single-${{ github.run_id }}
+          sbom: "true"
+          provenance: "true"
           secret-files: |
             tok=${{ runner.temp }}/tok.txt
       - run: |
