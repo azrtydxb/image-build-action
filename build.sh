@@ -147,19 +147,6 @@ if is_true "$IBB_PUSH"; then
 	done
 fi
 
-# digest of every platform manifest of the pushed list (for attestations), "os/arch[/variant] digest"
-platform_digests=
-if is_true "$IBB_PUSH" && is_true "$multi"; then
-	# from the pushed list: the platform manifests in the registry can differ from the local ones
-	first=${tags[0]}; last=${first##*/}; case "$last" in *:*) first=${first%:*} ;; esac
-	platform_digests=$("$podman" manifest inspect "docker://${first%@*}@$digest" | python3 -c '
-import json, sys
-for m in json.load(sys.stdin).get("manifests", []):
-    p = m.get("platform", {})
-    plat = "/".join(x for x in (p.get("os"), p.get("architecture"), p.get("variant")) if x)
-    print(plat, m["digest"])') || platform_digests=
-fi
-
 if is_true "$IBB_LOAD"; then
 	command -v docker >/dev/null 2>&1 || die "load: no docker CLI in this job"
 	"$podman" save --format docker-archive "$local_name" | docker load
@@ -173,9 +160,6 @@ meta=$(printf '{"containerimage.digest":"%s","containerimage.config.digest":"%s"
 	echo "digest=$digest"
 	echo "imageid=$imageid"
 	echo "metadata=$meta"
-	echo "platform-digests<<IBB_EOF"
-	echo "$platform_digests"
-	echo "IBB_EOF"
 } >>"${GITHUB_OUTPUT:-/dev/null}"
 [ -z "$digest" ] || echo "pushed $digest"
 echo "built $imageid"

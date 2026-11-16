@@ -14,12 +14,15 @@ x86_64) arch=amd64 ;;
 aarch64 | arm64) arch=arm64 ;;
 *) die "unsupported machine $(uname -m)" ;;
 esac
+crane_version=0.22.1
 syft_version=1.54.1
 cosign_version=3.1.4
 case "$arch" in
-amd64) syft_sha=c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47
+amd64) crane_sha=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+	syft_sha=c069905b391cc4c20a5ba65ad5c10be2a7ba074f8ea6ad203e24d14e303dad47
 	cosign_sha=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;;
-arm64) syft_sha=dfdf0537610113edbefe1f1fc6548bc957b2d77439636ec824fcf0e10d46d054
+arm64) crane_sha=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
+	syft_sha=dfdf0537610113edbefe1f1fc6548bc957b2d77439636ec824fcf0e10d46d054
 	cosign_sha=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;;
 esac
 tools=${RUNNER_TOOL_CACHE:-${RUNNER_TEMP:-/tmp}}/ibb-attest
@@ -44,6 +47,14 @@ if is_on "${IBB_SBOM:-}" && [ ! -x "$syft" ]; then
 	install -m 0755 "$work/syft" "$syft.tmp$$"; mv -f "$syft.tmp$$" "$syft"
 fi
 
+crane=$tools/crane-$crane_version-$arch
+if is_on "${IBB_SBOM:-}" && [ "${IBB_MULTI:-false}" = true ] && [ ! -x "$crane" ]; then
+	craneurl=https://github.com/google/go-containerregistry/releases/download/v$crane_version/go-containerregistry_Linux_$([ "$arch" = amd64 ] && echo x86_64 || echo arm64).tar.gz
+	fetch "$craneurl" "$crane_sha" "$work/crane.tgz"
+	tar -xzf "$work/crane.tgz" -C "$work" crane
+	install -m 0755 "$work/crane" "$crane.tmp$$"; mv -f "$crane.tmp$$" "$crane"
+fi
+
 # registry credentials: cosign and syft read $DOCKER_CONFIG/config.json
 auth=${IBB_AUTH_FILE:-}
 [ -n "$auth" ] || auth=${DOCKER_CONFIG:-$HOME/.docker}/config.json
@@ -66,10 +77,20 @@ while IFS= read -r t; do
 done < <(printf '%s\n' "$IBB_TAGS" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d')
 [ ${#repos[@]} -gt 0 ] || die "no repositories to attest"
 
-# what to attest: the index (provenance) and every platform manifest (SBOM); one image: itself
+# what to attest: the index (provenance) and every platform manifest (SBOM); one image: itself.
+# The platform manifests are read from the pushed list: they can differ from the local ones.
 platforms=()
-if [ -n "${IBB_PLATFORM_DIGESTS:-}" ]; then
-	while IFS= read -r l; do [ -n "$l" ] && platforms+=("$l"); done <<<"$IBB_PLATFORM_DIGESTS"
+if [ "${IBB_MULTI:-false}" = true ]; then
+	if is_on "${IBB_SBOM:-}"; then
+		while IFS= read -r l; do [ -n "$l" ] && platforms+=("$l"); done < <("$crane" manifest "${repos[0]}@$IBB_DIGEST" | python3 -c '
+import json, sys
+for m in json.load(sys.stdin).get("manifests", []):
+    p = m.get("platform", {})
+    plat = "/".join(x for x in (p.get("os"), p.get("architecture"), p.get("variant")) if x)
+    if plat and plat != "unknown/unknown":
+        print(plat, m["digest"])')
+		[ ${#platforms[@]} -gt 0 ] || die "could not list the platform manifests of ${repos[0]}@$IBB_DIGEST"
+	fi
 else
 	platforms+=("${IBB_PLATFORMS:-linux/amd64} $IBB_DIGEST")
 fi

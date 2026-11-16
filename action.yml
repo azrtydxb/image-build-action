@@ -79,9 +79,6 @@ outputs:
   imageid:
     description: ID of the built image or manifest list in the Podman store.
     value: ${{ steps.build.outputs.imageid }}
-  platform-digests:
-    description: One "os/arch digest" line per platform manifest of the pushed list (empty for one platform).
-    value: ${{ steps.build.outputs.platform-digests }}
   metadata:
     description: Build result as JSON (containerimage.digest, image.name, containerimage.config.digest).
     value: ${{ steps.build.outputs.metadata }}
@@ -94,6 +91,7 @@ runs:
         IBB_CONTEXT: ${{ inputs.context }}
         IBB_FILE: ${{ inputs.file }}
         IBB_PLATFORMS: ${{ inputs.platforms }}
+        IBB_MULTI: ${{ contains(inputs.platforms, ',') }}
         IBB_TAGS: ${{ inputs.tags }}
         IBB_PUSH: ${{ inputs.push }}
         IBB_LOAD: ${{ inputs.load }}
@@ -113,7 +111,6 @@ runs:
       env:
         IBB_TAGS: ${{ inputs.tags }}
         IBB_DIGEST: ${{ steps.build.outputs.digest }}
-        IBB_PLATFORM_DIGESTS: ${{ steps.build.outputs.platform-digests }}
         IBB_PLATFORMS: ${{ inputs.platforms }}
         IBB_SBOM: ${{ inputs.sbom }}
         IBB_PROVENANCE: ${{ inputs.provenance }}
