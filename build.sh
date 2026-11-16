@@ -10,6 +10,7 @@ lines() { printf '%s\n' "${1:-}" | sed -e 's/\r$//' -e '/^[[:space:]]*$/d' -e '/
 
 export CONTAINER_HOST="${CONTAINER_HOST:-unix:///run/podman/podman.sock}"
 sock=${CONTAINER_HOST#unix://}
+for i in $(seq 1 60); do [ -S "$sock" ] && break; sleep 2; done
 [ -S "$sock" ] || die "no Podman service socket at $sock. This action needs a job that runs in the runner container of arc-azrtydxb-amd64 (not in a 'container:' job, and not on a GitHub-hosted runner)."
 
 # ---- podman-remote, pinned and checksum-verified ---------------------------------------------
@@ -37,7 +38,13 @@ if [ ! -x "$podman" ] || ! "$podman" --version >/dev/null 2>&1; then
 	mv -f "$podman.$$" "$podman"
 	rm -rf "$tmp"
 fi
-"$podman" version >/dev/null 2>&1 || die "cannot reach the Podman service at $CONTAINER_HOST"
+# The sidecar may still be starting on a fresh pod: wait up to 120s for the service to answer.
+for i in $(seq 1 60); do
+	"$podman" version >/dev/null 2>&1 && break
+	[ "$i" = 1 ] && echo "waiting for the Podman service at $CONTAINER_HOST"
+	sleep 2
+done
+"$podman" version >/dev/null 2>&1 || die "cannot reach the Podman service at $CONTAINER_HOST after 120s"
 
 # ---- registry credentials the job already has ----------------------------------------------------
 auth=${IBB_AUTH_FILE:-}
